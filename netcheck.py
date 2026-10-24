@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-SendgikoskiLabs NetCheck v4.0
-==============================
+NetCheck — Network Diagnostic & Monitoring Tool
+Enhanced by Deepthi Dharmendra
+"""
 A self-contained network diagnostic and monitoring tool.
 
 Features:
@@ -163,7 +164,7 @@ class TracerouteResult:
 class NetDiag:
     """All network diagnostic primitives."""
 
-    # ── Ping ────────────────────────────────────────────────────────────────
+    # ── Ping ─────────────────────────────────────────────────────────────────
 
     @staticmethod
     def ping(host: str, count: int = 4, timeout: int = 4) -> PingResult:
@@ -174,8 +175,10 @@ class NetDiag:
                 cmd = ["ping", "-c", str(count), "-W", str(timeout), host]
 
             result = subprocess.run(
-                cmd, capture_output=True, text=True,
-                timeout=timeout * count + 5
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout * count + 5,
             )
             output = result.stdout
             packets_sent = count
@@ -186,7 +189,19 @@ class NetDiag:
                 m = re.search(r"Received = (\d+)", output)
                 if m:
                     packets_received = int(m.group(1))
-                times = [float(t) for t in re.findall(r"time[<=](\d+)ms", output)]
+
+                # Parse Windows response times, including fractional values.
+                matches = re.findall(
+                    r"time([=<])\s*(\d+(?:\.\d+)?)\s*ms",
+                    output,
+                )
+                for operator, value in matches:
+                    measured_time = float(value)
+                    if operator == "=":
+                        times.append(measured_time)
+                    elif operator == "<" and measured_time == 1:
+                        # Estimate: Windows reported a response time below 1 ms.
+                        times.append(0.5)
             else:
                 for line in output.splitlines():
                     m = re.search(r"time=(\d+\.?\d*)\s*ms", line)
@@ -197,7 +212,9 @@ class NetDiag:
                         packets_received = int(m2.group(1))
 
             if packets_received == 0 or not times:
-                return PingResult(host, packets_sent, 0, 100.0, 0, 0, 0, 0, False)
+                return PingResult(
+                    host, packets_sent, 0, 100.0, 0, 0, 0, 0, False
+                )
 
             loss = ((packets_sent - packets_received) / packets_sent) * 100
             return PingResult(
@@ -208,7 +225,9 @@ class NetDiag:
                 min_time=round(min(times), 2),
                 max_time=round(max(times), 2),
                 avg_time=round(statistics.mean(times), 2),
-                std_dev=round(statistics.stdev(times) if len(times) > 1 else 0.0, 2),
+                std_dev=round(
+                    statistics.stdev(times) if len(times) > 1 else 0.0, 2
+                ),
                 success=True,
             )
         except subprocess.TimeoutExpired:
@@ -216,6 +235,7 @@ class NetDiag:
         except Exception as e:
             print(f"[ping error] {e}", file=sys.stderr)
             return PingResult(host, count, 0, 100.0, 0, 0, 0, 0, False)
+
 
     # ── DNS ─────────────────────────────────────────────────────────────────
 
